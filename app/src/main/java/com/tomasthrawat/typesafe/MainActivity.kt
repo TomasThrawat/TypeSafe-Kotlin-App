@@ -196,36 +196,153 @@ class MainActivity : Activity() {
             )
 
             mainHandler.post {
-                val answer = runCatching {
-                    JSONObject(response).optJSONObject("answers")?.optJSONObject("q1")
-                }.getOrNull()
-                val visibleResult = when (type) {
-                    "noul" -> {
-                        val value = answer?.optDouble("noul", Double.NaN) ?: Double.NaN
-                        if (!value.isNaN()) {
-                            "Noul: ${String.format(java.util.Locale.US, "%.1f%%", value * 100.0)}"
-                        } else {
-                            "Noul: no value returned"
+                val visibleResult = runCatching {
+                    val answer = JSONObject(response)
+                        .optJSONObject("answers")
+                        ?.optJSONObject("q1")
+
+                    when (type) {
+                        "noul" -> {
+                            val value = answer?.optDouble("noul", Double.NaN) ?: Double.NaN
+                            if (value.isNaN()) {
+                                "Noul: no value returned"
+                            } else {
+                                "Noul: " + (value * 100.0) + "%"
+                            }
                         }
-                    }
-                    "score" -> {
-                        val value = answer?.optDouble("score", Double.NaN) ?: Double.NaN
-                        if (!value.isNaN()) {
-                            "Score: $value"
-                        } else {
-                            "Score: no value returned"
+                        "score" -> {
+                            val value = answer?.optDouble("score", Double.NaN) ?: Double.NaN
+                            if (value.isNaN()) {
+                                "Score: no value returned"
+                            } else {
+                                "Score: " + value
+                            }
                         }
-                    }
-                    "choice" -> {
-                        val value = answer?.optString("choice").orEmpty()
-                        if (value.isNotBlank()) {
-                            "Choice: $value"
-                        } else {
-                            "Choice: no value returned"
+                        "choice" -> {
+                            val value = answer?.optString("choice").orEmpty()
+                            if (value.isBlank()) "Choice: no value returned" else "Choice: " + value
                         }
+                        else -> pretty(response)
                     }
-                    else -> pretty(response)
-                }
+                }.getOrDefault(response)
+
                 resultView.text = visibleResult + "\n\nJSON:\n" + pretty(response)
                 scroll.post { scroll.fullScroll(ScrollView.FOCUS_DOWN) }
                 setBusy(false)
+            }
+        }
+    }
+
+    private fun setBusy(busy: Boolean) {
+        mainHandler.post {
+            testButton.isEnabled = !busy
+            askButton.isEnabled = !busy
+        }
+    }
+
+    private fun request(url: String, method: String, body: String?): String {
+        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+            requestMethod = method
+            connectTimeout = 15_000
+            readTimeout = 45_000
+            setRequestProperty("Accept", "application/json")
+        }
+
+        try {
+            if (body != null) {
+                connection.doOutput = true
+                connection.setRequestProperty(
+                    "Content-Type",
+                    "application/json; charset=utf-8"
+                )
+                connection.outputStream.use { output ->
+                    output.write(body.toByteArray(Charsets.UTF_8))
+                }
+            }
+
+            val code = connection.responseCode
+            val stream = if (code in 200..299) {
+                connection.inputStream
+            } else {
+                connection.errorStream ?: connection.inputStream
+            }
+            val text = stream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+            if (code !in 200..299) {
+                throw IOException("HTTP " + code + ": " + text)
+            }
+            return text
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private fun pretty(raw: String): String =
+        runCatching { JSONObject(raw).toString(2) }.getOrElse { raw }
+
+    private fun title(parent: LinearLayout, value: String) {
+        parent.addView(TextView(this).apply {
+            text = value
+            textSize = 28f
+            setTextColor(Color.WHITE)
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            gravity = Gravity.RIGHT
+        }, fullParams())
+    }
+
+    private fun subtitle(parent: LinearLayout, value: String) {
+        parent.addView(TextView(this).apply {
+            text = value
+            textSize = 13f
+            setTextColor(Color.LTGRAY)
+            gravity = Gravity.RIGHT
+        }, fullParams())
+    }
+
+    private fun sectionTitle(parent: LinearLayout, value: String) {
+        parent.addView(TextView(this).apply {
+            text = value
+            textSize = 18f
+            setTextColor(Color.WHITE)
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            gravity = Gravity.RIGHT
+            setPadding(0, dp(18), 0, dp(6))
+        }, fullParams())
+    }
+
+    private fun text(value: String): TextView = TextView(this).apply {
+        text = value
+        textSize = 15f
+        setTextColor(Color.WHITE)
+        gravity = Gravity.RIGHT
+        setPadding(dp(8), dp(8), dp(8), dp(8))
+    }
+
+    private fun edit(hint: String, value: String, lines: Int): EditText =
+        EditText(this).apply {
+            setHint(hint)
+            setText(value)
+            setTextColor(Color.WHITE)
+            setHintTextColor(Color.GRAY)
+            setBackgroundColor(Color.rgb(28, 28, 28))
+            gravity = Gravity.TOP or Gravity.RIGHT
+            minLines = lines
+            maxLines = maxOf(lines, 6)
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+        }
+
+    private fun fullParams(): LinearLayout.LayoutParams =
+        LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply {
+            setMargins(0, dp(4), 0, dp(4))
+        }
+
+    private fun dp(value: Int): Int =
+        (value * resources.displayMetrics.density).toInt()
+
+    override fun onDestroy() {
+        executor.shutdownNow()
+        super.onDestroy()
+    }
+}
