@@ -127,10 +127,11 @@ class MainActivity : Activity() {
         root.addView(section("المحادثة"))
 
         chatView = textView(
-            "اكتب أي شيء: سؤال، كود، فكرة لعبة، أو طلب تحليل.",
+            "",
             15f,
             false
         ).apply {
+            hint = "اكتب أي شيء: سؤال، كود، فكرة لعبة، أو طلب تحليل."
             setBackgroundColor(Color.rgb(18, 18, 18))
             setPadding(dp(12), dp(12), dp(12), dp(12))
             gravity = Gravity.TOP or Gravity.RIGHT
