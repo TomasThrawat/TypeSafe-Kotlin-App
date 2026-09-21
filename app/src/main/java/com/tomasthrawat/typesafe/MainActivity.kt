@@ -149,14 +149,14 @@ class MainActivity : Activity() {
         val question = questionInput.text.toString().trim()
         if (question.isEmpty()) return
 
-        setBusy(true)
-        resultView.text = "جاري معالجة الرسالة..."
-
         val localReply = localChatReply(question)
         if (localReply != null) {
             resultView.text = localReply
             return
         }
+
+        setBusy(true)
+        resultView.text = "جاري معالجة الرسالة..."
 
         val endpoint = endpointInput.text.toString().trim().removeSuffix("/")
         val state = stateInput.text.toString()
