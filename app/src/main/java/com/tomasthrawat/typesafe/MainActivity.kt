@@ -150,7 +150,13 @@ class MainActivity : Activity() {
         if (question.isEmpty()) return
 
         setBusy(true)
-        resultView.text = "جاري إرسال الطلب..."
+        resultView.text = "جاري معالجة الرسالة..."
+
+        val localReply = localChatReply(question)
+        if (localReply != null) {
+            resultView.text = localReply
+            return
+        }
 
         val endpoint = endpointInput.text.toString().trim().removeSuffix("/")
         val state = stateInput.text.toString()
@@ -226,9 +232,32 @@ class MainActivity : Activity() {
                     }
                 }.getOrDefault(response)
 
-                resultView.text = visibleResult + "\n\nJSON:\n" + pretty(response)
+                resultView.text = visibleResult
                 setBusy(false)
             }
+        }
+    }
+
+    private fun localChatReply(message: String): String? {
+        val normalized = message.trim().lowercase()
+            .replace(Regex("[\\p{Punct}\\p{S}]"), " ")
+            .replace(Regex("\\s+"), " ")
+
+        return when {
+            normalized.matches(Regex("(hi|hello|hey|hiya)")) ||
+                normalized.startsWith("hi ") ||
+                normalized.startsWith("hello ") ||
+                normalized.startsWith("hey ") ->
+                "Hello! How can I help you?"
+            normalized.contains("how are you") || normalized == "how r u" ->
+                "I'm fine. What would you like to talk about?"
+            normalized.matches(Regex("(thanks|thank you|thx)")) ->
+                "You're welcome!"
+            normalized.matches(Regex("(bye|goodbye|see you)")) ->
+                "Goodbye!"
+            normalized.contains("your name") || normalized == "who are you" ->
+                "I'm TypeSafe."
+            else -> null
         }
     }
 
