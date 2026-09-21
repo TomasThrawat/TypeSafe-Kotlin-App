@@ -117,7 +117,16 @@ class MainActivity : Activity() {
         root.addView(resultView, fullParams())
 
         testButton.setOnClickListener { testHealth() }
-        askButton.setOnClickListener { askTypeSafe() }
+        askButton.setOnClickListener {
+            val localReply = localChatReply(questionInput.text.toString())
+            if (localReply != null) {
+                requestGeneration += 1
+                resultView.text = localReply
+                setBusy(false)
+            } else {
+                askTypeSafe()
+            }
+        }
 
         setContentView(scroll)
     }
@@ -245,9 +254,12 @@ class MainActivity : Activity() {
     }
 
     private fun localChatReply(message: String): String? {
-        val normalized = message.trim().lowercase()
-            .replace(Regex("[\\p{Punct}\\p{S}]"), " ")
-            .replace(Regex("\\s+"), " ")
+        val normalized = buildString {
+            for (char in message.lowercase()) {
+                if (char.isLetterOrDigit() || char.isWhitespace()) append(char)
+                else append(' ')
+            }
+        }.replace(Regex("\\s+"), " ").trim()
 
         return when {
             normalized.matches(Regex("(hi|hello|hey|hiya|مرحبا|مرحباً|اهلا|أهلا|أهلًا|هاي)")) ||
