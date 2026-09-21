@@ -27,6 +27,7 @@ private const val DEFAULT_ENDPOINT = "https://typesafe-mcp-key-hyouka1.vercel.ap
 class MainActivity : Activity() {
     private val executor: ExecutorService = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
+    $marker
 
     private lateinit var statusView: TextView
     private lateinit var resultView: TextView
@@ -149,9 +150,12 @@ class MainActivity : Activity() {
         val question = questionInput.text.toString().trim()
         if (question.isEmpty()) return
 
+        val generation = ++requestGeneration
+
         val localReply = localChatReply(question)
         if (localReply != null) {
             resultView.text = localReply
+            setBusy(false)
             return
         }
 
@@ -202,6 +206,8 @@ class MainActivity : Activity() {
             )
 
             mainHandler.post {
+                if (generation != requestGeneration) return@post
+
                 val visibleResult = runCatching {
                     val answer = JSONObject(response)
                         .optJSONObject("answers")
@@ -244,10 +250,16 @@ class MainActivity : Activity() {
             .replace(Regex("\\s+"), " ")
 
         return when {
-            normalized.matches(Regex("(hi|hello|hey|hiya)")) ||
+            normalized.matches(Regex("(hi|hello|hey|hiya|مرحبا|مرحباً|اهلا|أهلا|أهلًا|هاي)")) ||
                 normalized.startsWith("hi ") ||
                 normalized.startsWith("hello ") ||
-                normalized.startsWith("hey ") ->
+                normalized.startsWith("hey ") ||
+                normalized.startsWith("مرحبا ") ||
+                normalized.startsWith("مرحباً ") ||
+                normalized.startsWith("اهلا ") ||
+                normalized.startsWith("أهلا ") ||
+                normalized.startsWith("أهلًا ") ||
+                normalized.startsWith("هاي ") ->
                 "Hello! How can I help you?"
             normalized.contains("how are you") || normalized == "how r u" ->
                 "I'm fine. What would you like to talk about?"
