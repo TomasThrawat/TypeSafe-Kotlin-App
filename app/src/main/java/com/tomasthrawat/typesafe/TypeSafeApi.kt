@@ -145,9 +145,14 @@ class TypeSafeApi {
             }
 
             if (!openRouterApiKey.isNullOrBlank()) {
+                val apiKey = openRouterApiKey.trim()
                 setRequestProperty(
                     "X-OpenRouter-API-Key",
-                    openRouterApiKey.trim()
+                    apiKey
+                )
+                setRequestProperty(
+                    "Authorization",
+                    "Bearer $apiKey"
                 )
             }
         }
@@ -199,3 +204,4 @@ class TypeSafeApi {
         }
     }
 }
+
