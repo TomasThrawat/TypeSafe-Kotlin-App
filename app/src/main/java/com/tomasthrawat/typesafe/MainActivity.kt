@@ -1,6 +1,9 @@
 package com.tomasthrawat.typesafe
 
 import android.app.Activity
+import android.content.ClipboardManager
+import android.content.ClipData
+import android.content.Context
 import android.content.Intent
 import android.database.Cursor
 import android.graphics.Bitmap
@@ -62,34 +65,44 @@ class MainActivity : Activity() {
         val scroll = ScrollView(this).apply {
             setBackgroundColor(Color.BLACK)
             isFillViewport = true
+            clipToPadding = false
         }
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(16), dp(16), dp(24))
+            setPadding(dp(18), dp(18), dp(18), dp(28))
             layoutDirection = View.LAYOUT_DIRECTION_RTL
         }
 
-        root.addView(textView("TypeSafe AI", 28f, true))
-        root.addView(
+        val header = card().apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(16), dp(18), dp(16))
+        }
+        header.addView(textView("TypeSafe AI", 30f, true))
+        header.addView(
             textView(
-                "محادثة AI حقيقية مع دعم الصور والملفات وMCP",
-                14f,
+                "محادثة AI سريعة مع الصور والملفات وMCP",
+                13f,
                 false
             )
         )
+        root.addView(header, fullParams())
 
         root.addView(section("الخادم"))
+        val serverCard = card().apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+        }
 
         endpointInput = editText(
             hint = "Vercel endpoint",
             value = DEFAULT_ENDPOINT,
             lines = 1
         )
-        root.addView(endpointInput, fullParams())
+        serverCard.addView(endpointInput, fullParams())
 
         apiKeyInput = editText(
-            hint = "OpenRouter API Key المجاني",
+            hint = "OpenRouter API Key",
             value = "",
             lines = 1
         ).apply {
@@ -97,18 +110,21 @@ class MainActivity : Activity() {
                 InputType.TYPE_CLASS_TEXT or
                     InputType.TYPE_TEXT_VARIATION_PASSWORD
         }
-        root.addView(apiKeyInput, fullParams())
-
-        root.addView(
+        serverCard.addView(apiKeyInput, fullParams())
+        serverCard.addView(
             textView(
-                "المفتاح يُرسل عبر HTTPS فقط ولا يوجد داخل APK.",
-                11f,
+                "المفتاح محفوظ محليًا ويُرسل عبر HTTPS فقط.",
+                10.5f,
                 false
             )
         )
+        root.addView(serverCard, fullParams())
 
         root.addView(section("النموذج"))
-
+        val modelCard = card().apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(8), dp(12), dp(10))
+        }
         modelSpinner = Spinner(this).apply {
             adapter = ArrayAdapter(
                 this@MainActivity,
@@ -119,79 +135,80 @@ class MainActivity : Activity() {
                     "Ling 3.0 Flash VL (free)"
                 )
             )
+            background = roundedBackground(Color.rgb(28, 28, 28), Color.rgb(58, 58, 58), 12)
+            setPadding(dp(10), 0, dp(10), 0)
         }
-        root.addView(modelSpinner, fullParams())
-
-        statusView = textView("جاري فحص الخادم...", 12f, false)
-        root.addView(statusView, fullParams())
+        modelCard.addView(modelSpinner, fullParams())
+        statusView = textView("جاري فحص الخادم...", 12f, false).apply {
+            setPadding(dp(4), dp(8), dp(4), 0)
+            setTextColor(Color.LTGRAY)
+        }
+        modelCard.addView(statusView, fullParams())
+        root.addView(modelCard, fullParams())
 
         root.addView(section("المحادثة"))
-
+        val chatCard = card().apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+        }
         chatContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.TOP
-            setBackgroundColor(Color.rgb(18, 18, 18))
-            setPadding(dp(8), dp(8), dp(8), dp(8))
+            setBackgroundColor(Color.TRANSPARENT)
             clipToPadding = false
+            setPadding(dp(2), dp(2), dp(2), dp(2))
         }
-        root.addView(
+        chatCard.addView(
             chatContainer,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(360)
+                dp(380)
             )
         )
+        root.addView(chatCard, fullParams())
 
         root.addView(section("المرفقات"))
-
+        val attachmentCard = card().apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(10), dp(8), dp(10), dp(8))
+        }
         attachmentView = textView("لا توجد مرفقات", 12f, false)
-        root.addView(attachmentView, fullParams())
+        attachmentCard.addView(attachmentView, fullParams())
 
         val attachmentRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             layoutDirection = View.LAYOUT_DIRECTION_RTL
         }
-
-        attachButton = Button(this).apply {
-            text = "ملف / صورة"
-            setOnClickListener { pickFiles() }
+        attachButton = actionButton("إضافة ملف / صورة") { pickFiles() }
+        clearAttachmentButton = actionButton("مسح المرفقات") {
+            pendingAttachments.clear()
+            refreshAttachments()
         }
-
-        clearAttachmentButton = Button(this).apply {
-            text = "مسح المرفقات"
-            setOnClickListener {
-                pendingAttachments.clear()
-                refreshAttachments()
-            }
-        }
-
         attachmentRow.addView(attachButton, weightParams(1f))
-        attachmentRow.addView(
-            clearAttachmentButton,
-            weightParams(1f)
-        )
-        root.addView(attachmentRow, fullParams())
+        attachmentRow.addView(clearAttachmentButton, weightParams(1f))
+        attachmentCard.addView(attachmentRow, fullParams())
+        root.addView(attachmentCard, fullParams())
 
-        root.addView(section("الرسالة"))
-
+        root.addView(section("رسالتك"))
+        val composerCard = card().apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(10), dp(10), dp(10), dp(10))
+        }
         messageInput = editText(
             hint = "اكتب رسالتك...",
             value = "",
             lines = 5
         )
-        root.addView(messageInput, fullParams())
+        composerCard.addView(messageInput, fullParams())
 
-        sendButton = Button(this).apply {
-            text = "إرسال إلى AI"
-            setOnClickListener { sendMessage() }
+        sendButton = actionButton("إرسال") { sendMessage() }.apply {
+            textSize = 15f
         }
-        root.addView(sendButton, fullParams())
+        composerCard.addView(sendButton, fullParams())
 
-        val healthButton = Button(this).apply {
-            text = "فحص الخادم"
-            setOnClickListener { checkHealth() }
-        }
-        root.addView(healthButton, fullParams())
+        val healthButton = actionButton("فحص الخادم") { checkHealth() }
+        composerCard.addView(healthButton, fullParams())
+        root.addView(composerCard, fullParams())
 
         scroll.addView(root)
         setContentView(scroll)
@@ -499,49 +516,85 @@ class MainActivity : Activity() {
     }
 
     private fun appendChat(role: String, message: String) {
+        val isUser = role == "أنت"
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = if (role == "أنت") Gravity.END else Gravity.START
-            setPadding(0, dp(4), 0, dp(4))
+            gravity = if (isUser) Gravity.END else Gravity.START
+            setPadding(dp(2), dp(5), dp(2), dp(5))
         }
 
         val bubble = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(14), dp(10), dp(14), dp(10))
-            background = GradientDrawable().apply {
-                cornerRadius = dp(18).toFloat()
-                setColor(
-                    if (role == "أنت") {
-                        Color.rgb(36, 36, 36)
-                    } else {
-                        Color.rgb(24, 24, 24)
-                    }
-                )
-                setStroke(dp(1), Color.rgb(55, 55, 55))
-            }
+            setPadding(dp(14), dp(11), dp(10), dp(9))
+            background = roundedBackground(
+                if (isUser) Color.rgb(42, 42, 42) else Color.rgb(22, 22, 22),
+                Color.rgb(58, 58, 58),
+                18
+            )
+        }
+
+        val topRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutDirection = View.LAYOUT_DIRECTION_LTR
         }
 
         val label = TextView(this).apply {
-            text = role
+            text = if (isUser) "أنت" else "AI"
             textSize = 11f
-            setTextColor(Color.LTGRAY)
-            setTypeface(
-                typeface,
-                android.graphics.Typeface.BOLD
+            setTextColor(if (isUser) Color.LTGRAY else Color.WHITE)
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        topRow.addView(
+            label,
+            LinearLayout.LayoutParams(0, dp(26), 1f)
+        )
+
+        if (!isUser) {
+            val copyButton = TextView(this).apply {
+                text = "نسخ"
+                textSize = 11f
+                gravity = Gravity.CENTER
+                setTextColor(Color.WHITE)
+                background = roundedBackground(
+                    Color.rgb(34, 34, 34),
+                    Color.rgb(70, 70, 70),
+                    10
+                )
+                setPadding(dp(10), 0, dp(10), 0)
+                minWidth = dp(54)
+                minHeight = dp(30)
+                isClickable = true
+                isFocusable = true
+                setOnClickListener {
+                    val clipboard =
+                        getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    clipboard.setPrimaryClip(
+                        ClipData.newPlainText("TypeSafe AI", message)
+                    )
+                    toast("تم نسخ الرسالة")
+                }
+            }
+            topRow.addView(
+                copyButton,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    dp(30)
+                )
             )
-            gravity = Gravity.START
         }
 
         val body = TextView(this).apply {
             text = message.trim()
             textSize = 15f
             setTextColor(Color.WHITE)
-            setPadding(0, dp(4), 0, 0)
+            setPadding(0, dp(7), dp(3), 0)
             gravity = Gravity.START
             setTextIsSelectable(true)
         }
 
-        bubble.addView(label)
+        bubble.addView(topRow)
         bubble.addView(body)
         body.maxWidth =
             (resources.displayMetrics.widthPixels * 0.78f).toInt()
@@ -598,8 +651,14 @@ class MainActivity : Activity() {
     }
 
     private fun section(label: String): TextView =
-        textView(label, 18f, true).apply {
-            setPadding(0, dp(18), 0, dp(8))
+        TextView(this).apply {
+            text = label
+            textSize = 12f
+            setTextColor(Color.rgb(170, 170, 170))
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            gravity = Gravity.RIGHT
+            setPadding(dp(2), dp(16), dp(2), dp(7))
+            letterSpacing = 0.04f
         }
 
     private fun textView(
@@ -612,14 +671,9 @@ class MainActivity : Activity() {
             textSize = size
             setTextColor(Color.WHITE)
             gravity = Gravity.RIGHT
-
             if (bold) {
-                setTypeface(
-                    typeface,
-                    android.graphics.Typeface.BOLD
-                )
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
             }
-
             setPadding(0, dp(4), 0, dp(4))
         }
 
@@ -632,17 +686,54 @@ class MainActivity : Activity() {
             setHint(hint)
             setText(value)
             setTextColor(Color.WHITE)
-            setHintTextColor(Color.GRAY)
-            setBackgroundColor(Color.rgb(24, 24, 24))
-            setPadding(
-                dp(12),
-                dp(10),
-                dp(12),
-                dp(10)
+            setHintTextColor(Color.rgb(125, 125, 125))
+            background = roundedBackground(
+                Color.rgb(20, 20, 20),
+                Color.rgb(52, 52, 52),
+                12
             )
+            setPadding(dp(14), dp(11), dp(14), dp(11))
             minLines = lines
             maxLines = lines
             gravity = Gravity.TOP or Gravity.RIGHT
+        }
+
+    private fun card(): LinearLayout =
+        LinearLayout(this).apply {
+            background = roundedBackground(
+                Color.rgb(14, 14, 14),
+                Color.rgb(40, 40, 40),
+                16
+            )
+        }
+
+    private fun roundedBackground(
+        fillColor: Int,
+        strokeColor: Int,
+        radiusDp: Int
+    ): GradientDrawable =
+        GradientDrawable().apply {
+            cornerRadius = dp(radiusDp).toFloat()
+            setColor(fillColor)
+            setStroke(dp(1), strokeColor)
+        }
+
+    private fun actionButton(
+        label: String,
+        action: () -> Unit
+    ): Button =
+        Button(this).apply {
+            text = label
+            setTextColor(Color.WHITE)
+            textSize = 13f
+            isAllCaps = false
+            background = roundedBackground(
+                Color.rgb(30, 30, 30),
+                Color.rgb(70, 70, 70),
+                12
+            )
+            setPadding(dp(12), 0, dp(12), 0)
+            setOnClickListener { action() }
         }
 
     private fun fullParams(): LinearLayout.LayoutParams =
