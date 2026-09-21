@@ -76,6 +76,53 @@ class TypeSafeApi {
         )
     }
 
+    private fun extractAssistantText(json: JSONObject): String? {
+        textFromJsonValue(json.opt("answer"))?.let { return it }
+
+        val choice = json.optJSONArray("choices")?.optJSONObject(0)
+            ?: return null
+        val message = choice.optJSONObject("message")
+
+        if (message != null) {
+            textFromJsonValue(message.opt("content"))?.let { return it }
+            textFromJsonValue(message.opt("output_text"))?.let { return it }
+            textFromJsonValue(message.opt("text"))?.let { return it }
+        }
+
+        textFromJsonValue(choice.opt("text"))?.let { return it }
+        textFromJsonValue(choice.optJSONObject("delta")?.opt("content"))
+            ?.let { return it }
+
+        return null
+    }
+
+    private fun textFromJsonValue(value: Any?): String? = when (value) {
+        is String -> value.trim().takeIf { it.isNotEmpty() }
+        is JSONArray -> {
+            val parts = buildList {
+                for (index in 0 until value.length()) {
+                    textFromJsonValue(value.opt(index))?.let { add(it) }
+                }
+            }
+            parts.joinToString("\n").trim().takeIf { it.isNotEmpty() }
+        }
+        is JSONObject -> {
+            val type = value.optString("type").lowercase()
+            if (type.isNotEmpty() &&
+                !type.contains("text") &&
+                !type.contains("content")
+            ) {
+                null
+            } else {
+                textFromJsonValue(value.opt("text"))
+                    ?: textFromJsonValue(value.opt("content"))
+                    ?: textFromJsonValue(value.opt("output_text"))
+                    ?: textFromJsonValue(value.opt("value"))
+            }
+        }
+        else -> null
+    }
+
     private fun request(
         url: URL,
         method: String,
@@ -128,21 +175,22 @@ class TypeSafeApi {
                 }
 
             if (code !in 200..299) {
-                throw IOException("HTTP $code: $text")
+                val serverError = runCatching {
+                    JSONObject(text)
+                        .optString("error")
+                        .trim()
+                        .takeIf { it.isNotEmpty() }
+                }.getOrNull()
+
+                throw IOException(
+                    "HTTP $code: ${serverError ?: text.take(500)}"
+                )
             }
 
             val json = JSONObject(text)
+            val answer = extractAssistantText(json)
 
-            return json.optString("answer")
-                .trim()
-                .takeIf { it.isNotEmpty() }
-                ?: json
-                    .optJSONArray("choices")
-                    ?.optJSONObject(0)
-                    ?.optJSONObject("message")
-                    ?.optString("content")
-                    ?.trim()
-                    ?.takeIf { it.isNotEmpty() }
+            return answer
                 ?: throw IOException(
                     "The server returned no assistant text."
                 )

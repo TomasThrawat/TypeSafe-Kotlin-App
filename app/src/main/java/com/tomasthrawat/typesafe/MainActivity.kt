@@ -6,6 +6,7 @@ import android.database.Cursor
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
@@ -40,7 +41,7 @@ class MainActivity : Activity() {
     private lateinit var apiKeyInput: EditText
     private lateinit var modelSpinner: Spinner
     private lateinit var messageInput: EditText
-    private lateinit var chatView: TextView
+    private lateinit var chatContainer: LinearLayout
     private lateinit var attachmentView: TextView
     private lateinit var statusView: TextView
     private lateinit var sendButton: Button
@@ -126,18 +127,15 @@ class MainActivity : Activity() {
 
         root.addView(section("المحادثة"))
 
-        chatView = textView(
-            "",
-            15f,
-            false
-        ).apply {
-            hint = "اكتب أي شيء: سؤال، كود، فكرة لعبة، أو طلب تحليل."
+        chatContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.TOP
             setBackgroundColor(Color.rgb(18, 18, 18))
-            setPadding(dp(12), dp(12), dp(12), dp(12))
-            gravity = Gravity.TOP or Gravity.RIGHT
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+            clipToPadding = false
         }
         root.addView(
-            chatView,
+            chatContainer,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 dp(360)
@@ -501,13 +499,66 @@ class MainActivity : Activity() {
     }
 
     private fun appendChat(role: String, message: String) {
-        if (chatView.text.toString().isBlank()) {
-            chatView.text = ""
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = if (role == "أنت") Gravity.END else Gravity.START
+            setPadding(0, dp(4), 0, dp(4))
         }
 
-        chatView.append(
-            "\\n$role:\\n$message\\n"
+        val bubble = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            background = GradientDrawable().apply {
+                cornerRadius = dp(18).toFloat()
+                setColor(
+                    if (role == "أنت") {
+                        Color.rgb(36, 36, 36)
+                    } else {
+                        Color.rgb(24, 24, 24)
+                    }
+                )
+                setStroke(dp(1), Color.rgb(55, 55, 55))
+            }
+        }
+
+        val label = TextView(this).apply {
+            text = role
+            textSize = 11f
+            setTextColor(Color.LTGRAY)
+            setTypeface(
+                typeface,
+                android.graphics.Typeface.BOLD
+            )
+            gravity = Gravity.START
+        }
+
+        val body = TextView(this).apply {
+            text = message.trim()
+            textSize = 15f
+            setTextColor(Color.WHITE)
+            setPadding(0, dp(4), 0, 0)
+            gravity = Gravity.START
+            textIsSelectable = true
+        }
+
+        bubble.addView(label)
+        bubble.addView(body)
+        body.maxWidth =
+            (resources.displayMetrics.widthPixels * 0.78f).toInt()
+
+        row.addView(
+            bubble,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
         )
+        chatContainer.addView(row)
+
+        chatContainer.post {
+            ((chatContainer.parent?.parent) as? ScrollView)
+                ?.fullScroll(View.FOCUS_DOWN)
+        }
     }
 
     private fun loadSettings() {
