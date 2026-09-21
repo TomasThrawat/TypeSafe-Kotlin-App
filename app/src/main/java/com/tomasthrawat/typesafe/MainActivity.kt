@@ -44,6 +44,7 @@ class MainActivity : Activity() {
     private lateinit var apiKeyInput: EditText
     private lateinit var modelSpinner: Spinner
     private lateinit var messageInput: EditText
+    private lateinit var chatScrollView: ScrollView
     private lateinit var chatContainer: LinearLayout
     private lateinit var attachmentView: TextView
     private lateinit var statusView: TextView
@@ -151,6 +152,13 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(8), dp(8), dp(8), dp(8))
         }
+        chatScrollView = ScrollView(this).apply {
+            setBackgroundColor(Color.TRANSPARENT)
+            isFillViewport = true
+            isVerticalScrollBarEnabled = true
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            clipToPadding = false
+        }
         chatContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.TOP
@@ -158,8 +166,15 @@ class MainActivity : Activity() {
             clipToPadding = false
             setPadding(dp(2), dp(2), dp(2), dp(2))
         }
-        chatCard.addView(
+        chatScrollView.addView(
             chatContainer,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+        chatCard.addView(
+            chatScrollView,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 dp(380)
@@ -608,9 +623,8 @@ class MainActivity : Activity() {
         )
         chatContainer.addView(row)
 
-        chatContainer.post {
-            ((chatContainer.parent?.parent) as? ScrollView)
-                ?.fullScroll(View.FOCUS_DOWN)
+        chatScrollView.post {
+            chatScrollView.fullScroll(View.FOCUS_DOWN)
         }
     }
 
@@ -795,3 +809,4 @@ class MainActivity : Activity() {
         super.onDestroy()
     }
 }
+
