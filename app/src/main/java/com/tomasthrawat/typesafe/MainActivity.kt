@@ -40,8 +40,6 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.statusBarColor = Color.BLACK
-        window.navigationBarColor = Color.BLACK
         createUi()
         testHealth()
     }
@@ -62,8 +60,10 @@ class MainActivity : Activity() {
         sectionTitle(root, "الاتصال")
         endpointInput = edit("عنوان الخادم", DEFAULT_ENDPOINT, 1)
         root.addView(endpointInput, fullParams())
+
         testButton = Button(this).apply { text = "اختبار الاتصال" }
         root.addView(testButton, fullParams())
+
         statusView = text("جاري الاتصال...")
         root.addView(statusView, fullParams())
 
@@ -91,7 +91,6 @@ class MainActivity : Activity() {
         levelsInput.visibility = android.view.View.GONE
         root.addView(levelsInput, fullParams())
 
-        typeSpinner.setSelection(0)
         typeSpinner.setOnItemSelectedListener(
             object : android.widget.AdapterView.OnItemSelectedListener {
                 override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
@@ -135,7 +134,9 @@ class MainActivity : Activity() {
                 val json = JSONObject(raw)
                 if (json.optBoolean("ok")) "متصل بـ TypeSafe MCP"
                 else "الخادم رد، لكن حالة TypeSafe غير مؤكدة"
-            }.getOrElse { "فشل الاتصال: " + (it.message ?: "خطأ غير معروف") }
+            }.getOrElse {
+                "فشل الاتصال: " + (it.message ?: "خطأ غير معروف")
+            }
 
             mainHandler.post {
                 statusView.text = message
@@ -189,7 +190,9 @@ class MainActivity : Activity() {
                 )
             }.fold(
                 onSuccess = { pretty(it) },
-                onFailure = { "خطأ: " + (it.message ?: "خطأ غير معروف") }
+                onFailure = {
+                    "خطأ: " + (it.message ?: "خطأ غير معروف")
+                }
             )
 
             mainHandler.post {
@@ -207,11 +210,12 @@ class MainActivity : Activity() {
     }
 
     private fun request(url: String, method: String, body: String?): String {
-        val connection = (URL(url).openConnection() as HttpURLConnection)
-        connection.requestMethod = method
-        connection.connectTimeout = 15_000
-        connection.readTimeout = 45_000
-        connection.setRequestProperty("Accept", "application/json")
+        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+            requestMethod = method
+            connectTimeout = 15_000
+            readTimeout = 45_000
+            setRequestProperty("Accept", "application/json")
+        }
 
         try {
             if (body != null) {
@@ -220,8 +224,8 @@ class MainActivity : Activity() {
                     "Content-Type",
                     "application/json; charset=utf-8"
                 )
-                connection.outputStream.use {
-                    it.write(body.toByteArray(Charsets.UTF_8))
+                connection.outputStream.use { output ->
+                    output.write(body.toByteArray(Charsets.UTF_8))
                 }
             }
 
