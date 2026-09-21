@@ -84,8 +84,8 @@ class TypeSafeApi {
     ): String {
         val connection = (url.openConnection() as HttpURLConnection).apply {
             requestMethod = method
-            connectTimeout = 15_000
-            readTimeout = 60_000
+            connectTimeout = 30_000
+            readTimeout = 300_000
             useCaches = false
             setRequestProperty("Accept", "application/json")
 
