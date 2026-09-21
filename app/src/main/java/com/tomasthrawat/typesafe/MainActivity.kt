@@ -538,7 +538,7 @@ class MainActivity : Activity() {
             setTextColor(Color.WHITE)
             setPadding(0, dp(4), 0, 0)
             gravity = Gravity.START
-            isTextSelectable = true
+            setTextIsSelectable(true)
         }
 
         bubble.addView(label)
