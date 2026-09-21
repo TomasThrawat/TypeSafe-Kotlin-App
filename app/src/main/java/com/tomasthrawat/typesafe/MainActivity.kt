@@ -262,21 +262,44 @@ class MainActivity : Activity() {
     }
 
     private fun checkHealth() {
+        val endpoint = endpointInput.text.toString().trim()
+        val apiKey = apiKeyInput.text.toString().trim()
+
+        if (endpoint.isEmpty()) {
+            statusView.text = "أدخل عنوان الخادم"
+            return
+        }
+
+        saveSettings()
+
         val currentGeneration = generation.incrementAndGet()
         statusView.text = "جاري الفحص..."
 
         executor.execute {
-            val result = api.health(endpointInput.text.toString())
+            val result = api.health(endpoint, apiKey)
 
             runOnUiThread {
                 if (currentGeneration != generation.get()) {
                     return@runOnUiThread
                 }
 
-                result.onSuccess {
-                    statusView.text = "الخادم يعمل"
-                }.onFailure {
-                    statusView.text = "تعذر الوصول للخادم"
+                result.onSuccess { response ->
+                    val json = runCatching {
+                        org.json.JSONObject(response)
+                    }.getOrNull()
+
+                    val keyReceived = json
+                        ?.optBoolean("openRouterApiKeyProvided", false)
+                        ?: false
+
+                    statusView.text = if (keyReceived) {
+                        "الخادم يعمل • المفتاح وصل"
+                    } else {
+                        "الخادم يعمل • المفتاح لم يصل"
+                    }
+                }.onFailure { error ->
+                    statusView.text =
+                        "تعذر الوصول للخادم: ${describeNetworkError(error)}"
                 }
             }
         }
@@ -596,6 +619,24 @@ class MainActivity : Activity() {
 
     private fun dp(value: Int): Int =
         (value * resources.displayMetrics.density).toInt()
+
+    private fun describeNetworkError(error: Throwable): String {
+        val root = generateSequence(error) { it.cause }.last()
+
+        return when (root) {
+            is java.net.UnknownHostException ->
+                "تعذر حل اسم الخادم"
+            is java.net.ConnectException ->
+                "تعذر فتح الاتصال"
+            is java.net.SocketTimeoutException ->
+                "انتهت مهلة الاتصال"
+            is javax.net.ssl.SSLException ->
+                "فشل اتصال TLS"
+            else ->
+                error.message?.takeIf { it.isNotBlank() }
+                    ?: root.javaClass.simpleName
+        }.take(220)
+    }
 
     private fun toast(message: String) {
         Toast.makeText(

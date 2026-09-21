@@ -64,12 +64,15 @@ class TypeSafeApi {
         )
     }
 
-    fun health(endpoint: String): Result<String> = runCatching {
+    fun health(
+        endpoint: String,
+        openRouterApiKey: String
+    ): Result<String> = runCatching {
         request(
-            url = URL(endpoint.trimEnd('/') + "/api/health"),
+            url = URL(endpoint.trim().trimEnd('/') + "/api/health"),
             method = "GET",
             body = null,
-            openRouterApiKey = null
+            openRouterApiKey = openRouterApiKey
         )
     }
 
