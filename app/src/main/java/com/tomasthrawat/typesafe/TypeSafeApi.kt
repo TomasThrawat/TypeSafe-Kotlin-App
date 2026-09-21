@@ -123,14 +123,12 @@ class TypeSafeApi {
                 }
 
             if (code !in 200..299) {
-                throw IOException(
-                    "HTTP $code: $text"
-                )
+                throw IOException("HTTP $code: $text")
             }
 
             val json = JSONObject(text)
 
-            json.optString("answer")
+            return json.optString("answer")
                 .trim()
                 .takeIf { it.isNotEmpty() }
                 ?: json
