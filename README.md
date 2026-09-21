@@ -5,7 +5,7 @@ Native Android application written in Kotlin + Jetpack Compose.
 ## What it does
 
 - Connects to the TypeSafe mobile bridge at:
-  https://typesafe-mcp-key.vercel.app
+  https://typesafe-mcp-key-hyouka1.vercel.app
 - Checks the bridge health.
 - Sends typed System One questions.
 - Supports noul, score, and choice.

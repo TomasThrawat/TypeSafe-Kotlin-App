@@ -22,7 +22,7 @@ import java.util.concurrent.Executors
 import org.json.JSONArray
 import org.json.JSONObject
 
-private const val DEFAULT_ENDPOINT = "https://typesafe-mcp-key.vercel.app"
+private const val DEFAULT_ENDPOINT = "https://typesafe-mcp-key-hyouka1.vercel.app"
 
 class MainActivity : Activity() {
     private val executor: ExecutorService = Executors.newSingleThreadExecutor()
