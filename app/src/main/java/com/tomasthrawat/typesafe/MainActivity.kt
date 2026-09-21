@@ -27,7 +27,7 @@ private const val DEFAULT_ENDPOINT = "https://typesafe-mcp-key-hyouka1.vercel.ap
 class MainActivity : Activity() {
     private val executor: ExecutorService = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
-    $marker
+    private var requestGeneration: Long = 0L
 
     private lateinit var statusView: TextView
     private lateinit var resultView: TextView
