@@ -227,7 +227,6 @@ class MainActivity : Activity() {
                 }.getOrDefault(response)
 
                 resultView.text = visibleResult + "\n\nJSON:\n" + pretty(response)
-                scroll.post { scroll.fullScroll(ScrollView.FOCUS_DOWN) }
                 setBusy(false)
             }
         }
