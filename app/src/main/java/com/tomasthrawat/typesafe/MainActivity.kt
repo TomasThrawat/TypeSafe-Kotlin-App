@@ -51,6 +51,7 @@ class MainActivity : Activity() {
     private lateinit var sendButton: Button
     private lateinit var attachButton: Button
     private lateinit var clearAttachmentButton: Button
+    private lateinit var welcomeView: TextView
 
     private val history = mutableListOf<ChatMessage>()
     private val pendingAttachments = mutableListOf<ChatAttachment>()
@@ -89,7 +90,7 @@ class MainActivity : Activity() {
         )
         root.addView(header, fullParams())
 
-        root.addView(section("الخادم"))
+        root.addView(section("الخادم").apply { visibility = View.GONE })
         val serverCard = card().apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(12), dp(10), dp(12), dp(10))
@@ -120,8 +121,9 @@ class MainActivity : Activity() {
             )
         )
         root.addView(serverCard, fullParams())
+        serverCard.visibility = View.GONE
 
-        root.addView(section("النموذج"))
+        root.addView(section("النموذج").apply { visibility = View.GONE })
         val modelCard = card().apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(12), dp(8), dp(12), dp(10))
@@ -146,6 +148,21 @@ class MainActivity : Activity() {
         }
         modelCard.addView(statusView, fullParams())
         root.addView(modelCard, fullParams())
+        modelCard.visibility = View.GONE
+
+        val settingsButton = actionButton("⚙ الإعدادات") { }
+        settingsButton.setOnClickListener {
+            val show = serverCard.visibility != View.VISIBLE
+            serverCard.visibility = if (show) View.VISIBLE else View.GONE
+            modelCard.visibility = if (show) View.VISIBLE else View.GONE
+            settingsButton.text = if (show) "إخفاء الإعدادات" else "⚙ الإعدادات"
+        }
+        root.addView(settingsButton, 1, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            dp(36)
+        ).apply {
+            gravity = Gravity.CENTER
+        })
 
         root.addView(section("المحادثة"))
         val chatCard = card().apply {
@@ -173,16 +190,25 @@ class MainActivity : Activity() {
                 ViewGroup.LayoutParams.WRAP_CONTENT
             )
         )
+        welcomeView = textView("كيف أقدر أساعدك؟", 25f, true).apply {
+            gravity = Gravity.CENTER
+            setPadding(dp(18), dp(60), dp(18), dp(60))
+            setTextColor(Color.WHITE)
+        }
+        chatContainer.addView(welcomeView, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ))
         chatCard.addView(
             chatScrollView,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(380)
+                (resources.displayMetrics.heightPixels * 0.55f).toInt().coerceAtLeast(dp(360))
             )
         )
         root.addView(chatCard, fullParams())
 
-        root.addView(section("المرفقات"))
+        root.addView(section("المرفقات").apply { visibility = View.GONE })
         val attachmentCard = card().apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(10), dp(8), dp(10), dp(8))
@@ -203,8 +229,9 @@ class MainActivity : Activity() {
         attachmentRow.addView(clearAttachmentButton, weightParams(1f))
         attachmentCard.addView(attachmentRow, fullParams())
         root.addView(attachmentCard, fullParams())
+        attachmentCard.visibility = View.GONE
 
-        root.addView(section("رسالتك"))
+        root.addView(section("رسالتك").apply { visibility = View.GONE })
         val composerCard = card().apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(10), dp(10), dp(10), dp(10))
@@ -216,7 +243,12 @@ class MainActivity : Activity() {
         )
         composerCard.addView(messageInput, fullParams())
 
-        sendButton = actionButton("إرسال") { sendMessage() }.apply {
+        val quickAttachButton = actionButton("＋ ملف / صورة") { pickFiles() }.apply {
+            textSize = 11f
+        }
+        composerCard.addView(quickAttachButton, fullParams())
+
+        sendButton = actionButton("↑ إرسال") { sendMessage() }.apply {
             textSize = 15f
         }
         composerCard.addView(sendButton, fullParams())
@@ -256,7 +288,7 @@ class MainActivity : Activity() {
 
         val currentGeneration = generation.incrementAndGet()
         setBusy(true)
-        statusView.text = "AI يعمل..."
+        statusView.text = "جارٍ التفكير"
 
         executor.execute {
             val result = api.chat(
@@ -531,6 +563,9 @@ class MainActivity : Activity() {
     }
 
     private fun appendChat(role: String, message: String) {
+        if (welcomeView.visibility != View.GONE) {
+            welcomeView.visibility = View.GONE
+        }
         val isUser = role == "أنت"
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -626,6 +661,10 @@ class MainActivity : Activity() {
         chatScrollView.post {
             chatScrollView.fullScroll(View.FOCUS_DOWN)
         }
+    }
+
+    private fun showWelcome() {
+        welcomeView.visibility = View.VISIBLE
     }
 
     private fun loadSettings() {
