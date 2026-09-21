@@ -2,6 +2,7 @@ package com.tomasthrawat.typesafe
 
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
@@ -105,7 +106,9 @@ class TypeSafeApi {
         try {
             if (body != null) {
                 connection.outputStream.use { output ->
-                    output.write(body.toByteArray(StandardCharsets.UTF_8))
+                    output.write(
+                        body.toByteArray(StandardCharsets.UTF_8)
+                    )
                 }
             }
 
@@ -144,5 +147,29 @@ class TypeSafeApi {
         } finally {
             connection.disconnect()
         }
+    }
+
+    fun readTextFile(uri: android.net.Uri, maxBytes: Int = 1_000_000): String {
+        val output = ByteArrayOutputStream(maxBytes)
+
+        contentResolver.openInputStream(uri)?.use { input ->
+            val buffer = ByteArray(16 * 1024)
+            var remaining = maxBytes
+
+            while (remaining > 0) {
+                val count = input.read(
+                    buffer,
+                    0,
+                    minOf(buffer.size, remaining)
+                )
+
+                if (count < 0) break
+
+                output.write(buffer, 0, count)
+                remaining -= count
+            }
+        } ?: throw IOException("Unable to open attachment.")
+
+        return output.toString(StandardCharsets.UTF_8.name())
     }
 }
