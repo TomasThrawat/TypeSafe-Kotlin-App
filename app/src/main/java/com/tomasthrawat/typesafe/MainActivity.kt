@@ -1,11 +1,17 @@
 package com.tomasthrawat.typesafe
 
 import android.app.Activity
-import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
+import android.content.Intent
+import android.database.Cursor
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.net.Uri
+import android.os.Bundle
+import android.provider.OpenableColumns
+import android.text.InputType
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
 import android.widget.ArrayAdapter
 import android.widget.Button
@@ -14,372 +20,554 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Spinner
 import android.widget.TextView
-import java.io.IOException
-import java.net.HttpURLConnection
-import java.net.URL
-import java.util.concurrent.ExecutorService
+import android.widget.Toast
+import java.io.ByteArrayOutputStream
 import java.util.concurrent.Executors
-import org.json.JSONArray
-import org.json.JSONObject
+import java.util.concurrent.atomic.AtomicLong
+import android.util.Base64
 
-private const val DEFAULT_ENDPOINT = "https://typesafe-mcp-key-hyouka1.vercel.app"
+private const val DEFAULT_ENDPOINT =
+    "https://typesafe-mcp-key-hyouka1.vercel.app"
+private const val PICK_FILES = 7001
 
 class MainActivity : Activity() {
-    private val executor: ExecutorService = Executors.newSingleThreadExecutor()
-    private val mainHandler = Handler(Looper.getMainLooper())
-    private var requestGeneration: Long = 0L
 
-    private lateinit var statusView: TextView
-    private lateinit var resultView: TextView
+    private val executor = Executors.newSingleThreadExecutor()
+    private val api = TypeSafeApi()
+    private val generation = AtomicLong(0L)
+
     private lateinit var endpointInput: EditText
-    private lateinit var stateInput: EditText
-    private lateinit var questionInput: EditText
-    private lateinit var typeSpinner: Spinner
-    private lateinit var levelsInput: EditText
-    private lateinit var askButton: Button
-    private lateinit var testButton: Button
+    private lateinit var apiKeyInput: EditText
+    private lateinit var modelSpinner: Spinner
+    private lateinit var messageInput: EditText
+    private lateinit var chatView: TextView
+    private lateinit var attachmentView: TextView
+    private lateinit var statusView: TextView
+    private lateinit var sendButton: Button
+    private lateinit var attachButton: Button
+    private lateinit var clearAttachmentButton: Button
+
+    private val history = mutableListOf<ChatMessage>()
+    private val pendingAttachments = mutableListOf<ChatAttachment>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         createUi()
-        testHealth()
+        loadSettings()
+        checkHealth()
     }
 
     private fun createUi() {
-        val scroll = ScrollView(this)
+        val scroll = ScrollView(this).apply {
+            setBackgroundColor(Color.BLACK)
+            isFillViewport = true
+        }
+
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(16), dp(16), dp(16), dp(24))
-            layoutDirection = ViewGroup.LAYOUT_DIRECTION_RTL
-            textDirection = android.view.View.TEXT_DIRECTION_RTL
+            layoutDirection = View.LAYOUT_DIRECTION_RTL
         }
-        scroll.addView(root)
 
-        title(root, "TypeSafe")
-        subtitle(root, "تطبيق Android Native بـ Kotlin")
+        root.addView(textView("TypeSafe AI", 28f, true))
+        root.addView(
+            textView(
+                "محادثة AI حقيقية مع دعم الصور والملفات وMCP",
+                14f,
+                false
+            )
+        )
 
-        sectionTitle(root, "الاتصال")
-        endpointInput = edit("عنوان الخادم", DEFAULT_ENDPOINT, 1)
+        root.addView(section("الخادم"))
+
+        endpointInput = editText(
+            hint = "Vercel endpoint",
+            value = DEFAULT_ENDPOINT,
+            lines = 1
+        )
         root.addView(endpointInput, fullParams())
 
-        testButton = Button(this).apply { text = "اختبار الاتصال" }
-        root.addView(testButton, fullParams())
+        apiKeyInput = editText(
+            hint = "OpenRouter API Key المجاني",
+            value = "",
+            lines = 1
+        ).apply {
+            inputType =
+                InputType.TYPE_CLASS_TEXT or
+                    InputType.TYPE_TEXT_VARIATION_PASSWORD
+        }
+        root.addView(apiKeyInput, fullParams())
 
-        statusView = text("جاري الاتصال...")
+        root.addView(
+            textView(
+                "المفتاح يُرسل عبر HTTPS فقط ولا يوجد داخل APK.",
+                11f,
+                false
+            )
+        )
+
+        root.addView(section("النموذج"))
+
+        modelSpinner = Spinner(this).apply {
+            adapter = ArrayAdapter(
+                this@MainActivity,
+                android.R.layout.simple_spinner_dropdown_item,
+                listOf(
+                    "Auto: مجاني + fallback",
+                    "Nemotron 3 Ultra (free)",
+                    "Ling 3.0 Flash VL (free)"
+                )
+            )
+        }
+        root.addView(modelSpinner, fullParams())
+
+        statusView = textView("جاري فحص الخادم...", 12f, false)
         root.addView(statusView, fullParams())
 
-        sectionTitle(root, "System One")
-        stateInput = edit("السياق / الحالة", "", 4)
-        root.addView(stateInput, fullParams())
+        root.addView(section("المحادثة"))
 
-        questionInput = edit(
-            "السؤال",
-            "هل هذه المعلومة مدعومة بالأدلة المتاحة؟",
-            4
-        )
-        root.addView(questionInput, fullParams())
-
-        typeSpinner = Spinner(this)
-        val types = listOf("noul", "score", "choice")
-        typeSpinner.adapter = ArrayAdapter(
-            this,
-            android.R.layout.simple_spinner_dropdown_item,
-            types
-        )
-        root.addView(typeSpinner, fullParams())
-
-        levelsInput = edit("المستويات، كل مستوى في سطر", "ضعيف\nمتوسط\nقوي", 3)
-        levelsInput.visibility = android.view.View.GONE
-        root.addView(levelsInput, fullParams())
-
-        typeSpinner.setOnItemSelectedListener(
-            object : android.widget.AdapterView.OnItemSelectedListener {
-                override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
-
-                override fun onItemSelected(
-                    parent: android.widget.AdapterView<*>?,
-                    view: android.view.View?,
-                    position: Int,
-                    id: Long
-                ) {
-                    levelsInput.visibility =
-                        if (types[position] == "score") android.view.View.VISIBLE
-                        else android.view.View.GONE
-                }
-            }
+        chatView = textView(
+            "اكتب أي شيء: سؤال، كود، فكرة لعبة، أو طلب تحليل.",
+            15f,
+            false
+        ).apply {
+            setBackgroundColor(Color.rgb(18, 18, 18))
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+            gravity = Gravity.TOP or Gravity.RIGHT
+        }
+        root.addView(
+            chatView,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(360)
+            )
         )
 
-        askButton = Button(this).apply { text = "اسأل TypeSafe" }
-        root.addView(askButton, fullParams())
+        root.addView(section("المرفقات"))
 
-        sectionTitle(root, "النتيجة")
-        resultView = text("لا توجد نتيجة بعد.")
-        root.addView(resultView, fullParams())
+        attachmentView = textView("لا توجد مرفقات", 12f, false)
+        root.addView(attachmentView, fullParams())
 
-        testButton.setOnClickListener { testHealth() }
-        askButton.setOnClickListener {
-            val localReply = localChatReply(questionInput.text.toString())
-            if (localReply != null) {
-                requestGeneration += 1
-                resultView.text = localReply
-                setBusy(false)
-            } else {
-                askTypeSafe()
+        val attachmentRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutDirection = View.LAYOUT_DIRECTION_RTL
+        }
+
+        attachButton = Button(this).apply {
+            text = "ملف / صورة"
+            setOnClickListener { pickFiles() }
+        }
+
+        clearAttachmentButton = Button(this).apply {
+            text = "مسح المرفقات"
+            setOnClickListener {
+                pendingAttachments.clear()
+                refreshAttachments()
             }
         }
 
+        attachmentRow.addView(attachButton, weightParams(1f))
+        attachmentRow.addView(
+            clearAttachmentButton,
+            weightParams(1f)
+        )
+        root.addView(attachmentRow, fullParams())
+
+        root.addView(section("الرسالة"))
+
+        messageInput = editText(
+            hint = "اكتب رسالتك...",
+            value = "",
+            lines = 5
+        )
+        root.addView(messageInput, fullParams())
+
+        sendButton = Button(this).apply {
+            text = "إرسال إلى AI"
+            setOnClickListener { sendMessage() }
+        }
+        root.addView(sendButton, fullParams())
+
+        val healthButton = Button(this).apply {
+            text = "فحص الخادم"
+            setOnClickListener { checkHealth() }
+        }
+        root.addView(healthButton, fullParams())
+
+        scroll.addView(root)
         setContentView(scroll)
     }
 
-    private fun testHealth() {
-        setBusy(true)
-        statusView.text = "جاري اختبار الخادم..."
-        executor.execute {
-            val message = runCatching {
-                val raw = request(
-                    endpointInput.text.toString().trim().removeSuffix("/") + "/api/health",
-                    "GET",
-                    null
-                )
-                val json = JSONObject(raw)
-                if (json.optBoolean("ok")) "متصل بـ TypeSafe MCP"
-                else "الخادم رد، لكن حالة TypeSafe غير مؤكدة"
-            }.getOrElse {
-                "فشل الاتصال: " + (it.message ?: "خطأ غير معروف")
-            }
+    private fun sendMessage() {
+        val message = messageInput.text.toString().trim()
 
-            mainHandler.post {
-                statusView.text = message
-                setBusy(false)
-            }
-        }
-    }
-
-    private fun askTypeSafe() {
-        val question = questionInput.text.toString().trim()
-        if (question.isEmpty()) return
-
-        val generation = ++requestGeneration
-
-        val localReply = localChatReply(question)
-        if (localReply != null) {
-            resultView.text = localReply
-            setBusy(false)
+        if (message.isEmpty() && pendingAttachments.isEmpty()) {
+            toast("اكتب رسالة أو أضف ملفًا.")
             return
         }
 
-        setBusy(true)
-        resultView.text = "جاري معالجة الرسالة..."
+        saveSettings()
 
-        val endpoint = endpointInput.text.toString().trim().removeSuffix("/")
-        val state = stateInput.text.toString()
-        val type = typeSpinner.selectedItem.toString()
-        val levels = levelsInput.text.toString()
+        val userText = message.ifEmpty {
+            "Please analyze the attached files or images."
+        }
+
+        history.add(ChatMessage("user", userText))
+        appendChat("أنت", userText)
+
+        val currentAttachments = pendingAttachments.toList()
+
+        val selectedModel = when (modelSpinner.selectedItemPosition) {
+            1 -> "nvidia/nemotron-3-ultra-550b-a55b:free"
+            2 -> "inclusionai/ling-3.0-flash-vl:free"
+            else -> "auto"
+        }
+
+        val currentGeneration = generation.incrementAndGet()
+        setBusy(true)
+        statusView.text = "AI يعمل..."
 
         executor.execute {
-            val response = runCatching {
-                val body = JSONObject()
-                    .put("state", state)
-                    .put(
-                        "questions",
-                        JSONObject().put(
-                            "q1",
-                            JSONObject()
-                                .put("type", type)
-                                .put("instructions", question)
-                                .also { item ->
-                                    when (type) {
-                                        "score" -> {
-                                            val arr = JSONArray()
-                                            levels.lines()
-                                                .filter { it.isNotBlank() }
-                                                .forEach(arr::put)
-                                            item.put("levels", arr)
-                                        }
-                                        "choice" -> item.put("criteria", JSONObject())
-                                    }
-                                }
-                        )
-                    )
-
-                request(
-                    endpoint + "/api/ask",
-                    "POST",
-                    body.toString()
-                )
-            }.fold(
-                onSuccess = { pretty(it) },
-                onFailure = {
-                    "خطأ: " + (it.message ?: "خطأ غير معروف")
-                }
+            val result = api.chat(
+                endpoint = endpointInput.text.toString(),
+                openRouterApiKey = apiKeyInput.text.toString(),
+                messages = history.toList(),
+                attachments = currentAttachments,
+                model = selectedModel
             )
 
-            mainHandler.post {
-                if (generation != requestGeneration) return@post
+            runOnUiThread {
+                if (currentGeneration != generation.get()) {
+                    return@runOnUiThread
+                }
 
-                val visibleResult = runCatching {
-                    val answer = JSONObject(response)
-                        .optJSONObject("answers")
-                        ?.optJSONObject("q1")
+                result.onSuccess { answer ->
+                    history.add(ChatMessage("assistant", answer))
+                    appendChat("AI", answer)
+                    messageInput.text.clear()
+                    pendingAttachments.clear()
+                    refreshAttachments()
+                    statusView.text = "جاهز"
+                }.onFailure { error ->
+                    statusView.text = "فشل الطلب"
+                    appendChat(
+                        "خطأ",
+                        error.message ?: "Unknown error"
+                    )
+                }
 
-                    when (type) {
-                        "noul" -> {
-                            val value = answer?.optDouble("noul", Double.NaN) ?: Double.NaN
-                            if (value.isNaN()) {
-                                "Noul: no value returned"
-                            } else {
-                                "Noul: " + (value * 100.0) + "%"
-                            }
-                        }
-                        "score" -> {
-                            val value = answer?.optDouble("score", Double.NaN) ?: Double.NaN
-                            if (value.isNaN()) {
-                                "Score: no value returned"
-                            } else {
-                                "Score: " + value
-                            }
-                        }
-                        "choice" -> {
-                            val value = answer?.optString("choice").orEmpty()
-                            if (value.isBlank()) "Choice: no value returned" else "Choice: " + value
-                        }
-                        else -> pretty(response)
-                    }
-                }.getOrDefault(response)
-
-                resultView.text = visibleResult
                 setBusy(false)
             }
         }
     }
 
-    private fun localChatReply(message: String): String? {
-        val normalized = buildString {
-            for (char in message.lowercase()) {
-                if (char.isLetterOrDigit() || char.isWhitespace()) append(char)
-                else append(' ')
-            }
-        }.replace(Regex("\\s+"), " ").trim()
+    private fun checkHealth() {
+        val currentGeneration = generation.incrementAndGet()
+        statusView.text = "جاري الفحص..."
 
-        return when {
-            normalized.matches(Regex("(hi|hello|hey|hiya|مرحبا|مرحباً|اهلا|أهلا|أهلًا|هاي)")) ||
-                normalized.startsWith("hi ") ||
-                normalized.startsWith("hello ") ||
-                normalized.startsWith("hey ") ||
-                normalized.startsWith("مرحبا ") ||
-                normalized.startsWith("مرحباً ") ||
-                normalized.startsWith("اهلا ") ||
-                normalized.startsWith("أهلا ") ||
-                normalized.startsWith("أهلًا ") ||
-                normalized.startsWith("هاي ") ->
-                "Hello! How can I help you?"
-            normalized.contains("how are you") || normalized == "how r u" ->
-                "I'm fine. What would you like to talk about?"
-            normalized.matches(Regex("(thanks|thank you|thx)")) ->
-                "You're welcome!"
-            normalized.matches(Regex("(bye|goodbye|see you)")) ->
-                "Goodbye!"
-            normalized.contains("your name") || normalized == "who are you" ->
-                "I'm TypeSafe."
-            else -> null
+        executor.execute {
+            val result = api.health(endpointInput.text.toString())
+
+            runOnUiThread {
+                if (currentGeneration != generation.get()) {
+                    return@runOnUiThread
+                }
+
+                result.onSuccess {
+                    statusView.text = "الخادم يعمل"
+                }.onFailure {
+                    statusView.text = "تعذر الوصول للخادم"
+                }
+            }
         }
+    }
+
+    private fun pickFiles() {
+        startActivityForResult(
+            Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "*/*"
+                putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+            },
+            PICK_FILES
+        )
+    }
+
+    @Suppress("DEPRECATION")
+    override fun onActivityResult(
+        requestCode: Int,
+        resultCode: Int,
+        data: Intent?
+    ) {
+        super.onActivityResult(requestCode, resultCode, data)
+
+        if (
+            requestCode != PICK_FILES ||
+            resultCode != RESULT_OK ||
+            data == null
+        ) {
+            return
+        }
+
+        val uris = mutableListOf<Uri>()
+
+        data.data?.let { uris.add(it) }
+
+        data.clipData?.let { clip ->
+            for (index in 0 until clip.itemCount) {
+                uris.add(clip.getItemAt(index).uri)
+            }
+        }
+
+        for (uri in uris.distinct().take(4)) {
+            runCatching { readAttachment(uri) }
+                .onSuccess { attachment ->
+                    pendingAttachments.removeAll {
+                        it.name == attachment.name
+                    }
+                    pendingAttachments.add(attachment)
+                }
+                .onFailure {
+                    toast("تعذر قراءة أحد المرفقات.")
+                }
+        }
+
+        refreshAttachments()
+    }
+
+    private fun readAttachment(uri: Uri): ChatAttachment {
+        val name = queryDisplayName(uri) ?: "attachment"
+        val mimeType =
+            contentResolver.getType(uri) ?: "application/octet-stream"
+
+        if (mimeType.startsWith("image/")) {
+            val imageDataUrl = encodeImage(uri)
+
+            return ChatAttachment(
+                name = name,
+                mimeType = "image/jpeg",
+                sizeBytes = imageDataUrl.length.toLong(),
+                imageDataUrl = imageDataUrl
+            )
+        }
+
+        val lowerName = name.lowercase()
+
+        val textLike =
+            mimeType.startsWith("text/") ||
+                lowerName.endsWith(".txt") ||
+                lowerName.endsWith(".md") ||
+                lowerName.endsWith(".json") ||
+                lowerName.endsWith(".kt") ||
+                lowerName.endsWith(".java") ||
+                lowerName.endsWith(".xml") ||
+                lowerName.endsWith(".gradle") ||
+                lowerName.endsWith(".kts") ||
+                lowerName.endsWith(".js") ||
+                lowerName.endsWith(".ts") ||
+                lowerName.endsWith(".py") ||
+                lowerName.endsWith(".c") ||
+                lowerName.endsWith(".cpp") ||
+                lowerName.endsWith(".h") ||
+                lowerName.endsWith(".html") ||
+                lowerName.endsWith(".css") ||
+                lowerName.endsWith(".csv") ||
+                lowerName.endsWith(".log")
+
+        val textContent =
+            if (textLike) {
+                contentResolver.openInputStream(uri)?.use { input ->
+                    input.readBytes()
+                        .take(1_000_000)
+                        .toByteArray()
+                        .toString(Charsets.UTF_8)
+                }
+            } else {
+                null
+            }
+
+        val sizeBytes =
+            contentResolver.openAssetFileDescriptor(uri, "r")?.use {
+                it.length.takeIf { length -> length >= 0L } ?: 0L
+            } ?: 0L
+
+        return ChatAttachment(
+            name = name,
+            mimeType = mimeType,
+            sizeBytes = sizeBytes,
+            textContent = textContent
+        )
+    }
+
+    private fun encodeImage(uri: Uri): String {
+        val bitmap = contentResolver.openInputStream(uri).use { input ->
+            requireNotNull(BitmapFactory.decodeStream(input)) {
+                "Invalid image"
+            }
+        }
+
+        val maxSide = 1280
+        val scale = minOf(
+            1f,
+            maxSide.toFloat() / bitmap.width.toFloat(),
+            maxSide.toFloat() / bitmap.height.toFloat()
+        )
+
+        val resized =
+            if (scale < 1f) {
+                Bitmap.createScaledBitmap(
+                    bitmap,
+                    (bitmap.width * scale).toInt().coerceAtLeast(1),
+                    (bitmap.height * scale).toInt().coerceAtLeast(1),
+                    true
+                )
+            } else {
+                bitmap
+            }
+
+        val output = ByteArrayOutputStream()
+
+        resized.compress(
+            Bitmap.CompressFormat.JPEG,
+            82,
+            output
+        )
+
+        if (resized !== bitmap) resized.recycle()
+        if (!bitmap.isRecycled) bitmap.recycle()
+
+        val bytes = output.toByteArray()
+
+        require(bytes.size <= 3_000_000) {
+            "Image is too large"
+        }
+
+        return "data:image/jpeg;base64," +
+            Base64.encodeToString(
+                bytes,
+                Base64.NO_WRAP
+            )
+    }
+
+    private fun queryDisplayName(uri: Uri): String? {
+        val cursor: Cursor? = contentResolver.query(
+            uri,
+            arrayOf(OpenableColumns.DISPLAY_NAME),
+            null,
+            null,
+            null
+        )
+
+        cursor?.use {
+            if (it.moveToFirst()) return it.getString(0)
+        }
+
+        return uri.lastPathSegment
+    }
+
+    private fun refreshAttachments() {
+        attachmentView.text =
+            if (pendingAttachments.isEmpty()) {
+                "لا توجد مرفقات"
+            } else {
+                pendingAttachments.joinToString("\\n") {
+                    "• \${it.name} (\${it.mimeType})"
+                }
+            }
+    }
+
+    private fun appendChat(role: String, message: String) {
+        if (chatView.text.toString().isBlank()) {
+            chatView.text = ""
+        }
+
+        chatView.append(
+            "\\n$role:\\n$message\\n"
+        )
+    }
+
+    private fun loadSettings() {
+        val prefs =
+            getSharedPreferences("typesafe_settings", MODE_PRIVATE)
+
+        endpointInput.setText(
+            prefs.getString("endpoint", DEFAULT_ENDPOINT)
+        )
+
+        apiKeyInput.setText(
+            prefs.getString("openrouter_key", "")
+        )
+    }
+
+    private fun saveSettings() {
+        getSharedPreferences(
+            "typesafe_settings",
+            MODE_PRIVATE
+        )
+            .edit()
+            .putString(
+                "endpoint",
+                endpointInput.text.toString().trim()
+            )
+            .putString(
+                "openrouter_key",
+                apiKeyInput.text.toString().trim()
+            )
+            .apply()
     }
 
     private fun setBusy(busy: Boolean) {
-        mainHandler.post {
-            testButton.isEnabled = !busy
-            askButton.isEnabled = !busy
-        }
+        sendButton.isEnabled = !busy
+        attachButton.isEnabled = !busy
+        clearAttachmentButton.isEnabled = !busy
     }
 
-    private fun request(url: String, method: String, body: String?): String {
-        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
-            requestMethod = method
-            connectTimeout = 15_000
-            readTimeout = 45_000
-            setRequestProperty("Accept", "application/json")
+    private fun section(label: String): TextView =
+        textView(label, 18f, true).apply {
+            setPadding(0, dp(18), 0, dp(8))
         }
 
-        try {
-            if (body != null) {
-                connection.doOutput = true
-                connection.setRequestProperty(
-                    "Content-Type",
-                    "application/json; charset=utf-8"
+    private fun textView(
+        value: String,
+        size: Float,
+        bold: Boolean
+    ): TextView =
+        TextView(this).apply {
+            text = value
+            textSize = size
+            setTextColor(Color.WHITE)
+            gravity = Gravity.RIGHT
+
+            if (bold) {
+                setTypeface(
+                    typeface,
+                    android.graphics.Typeface.BOLD
                 )
-                connection.outputStream.use { output ->
-                    output.write(body.toByteArray(Charsets.UTF_8))
-                }
             }
 
-            val code = connection.responseCode
-            val stream = if (code in 200..299) {
-                connection.inputStream
-            } else {
-                connection.errorStream ?: connection.inputStream
-            }
-            val text = stream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-            if (code !in 200..299) {
-                throw IOException("HTTP " + code + ": " + text)
-            }
-            return text
-        } finally {
-            connection.disconnect()
+            setPadding(0, dp(4), 0, dp(4))
         }
-    }
 
-    private fun pretty(raw: String): String =
-        runCatching { JSONObject(raw).toString(2) }.getOrElse { raw }
-
-    private fun title(parent: LinearLayout, value: String) {
-        parent.addView(TextView(this).apply {
-            text = value
-            textSize = 28f
-            setTextColor(Color.WHITE)
-            setTypeface(null, android.graphics.Typeface.BOLD)
-            gravity = Gravity.RIGHT
-        }, fullParams())
-    }
-
-    private fun subtitle(parent: LinearLayout, value: String) {
-        parent.addView(TextView(this).apply {
-            text = value
-            textSize = 13f
-            setTextColor(Color.LTGRAY)
-            gravity = Gravity.RIGHT
-        }, fullParams())
-    }
-
-    private fun sectionTitle(parent: LinearLayout, value: String) {
-        parent.addView(TextView(this).apply {
-            text = value
-            textSize = 18f
-            setTextColor(Color.WHITE)
-            setTypeface(null, android.graphics.Typeface.BOLD)
-            gravity = Gravity.RIGHT
-            setPadding(0, dp(18), 0, dp(6))
-        }, fullParams())
-    }
-
-    private fun text(value: String): TextView = TextView(this).apply {
-        text = value
-        textSize = 15f
-        setTextColor(Color.WHITE)
-        gravity = Gravity.RIGHT
-        setPadding(dp(8), dp(8), dp(8), dp(8))
-    }
-
-    private fun edit(hint: String, value: String, lines: Int): EditText =
+    private fun editText(
+        hint: String,
+        value: String,
+        lines: Int
+    ): EditText =
         EditText(this).apply {
             setHint(hint)
             setText(value)
             setTextColor(Color.WHITE)
             setHintTextColor(Color.GRAY)
-            setBackgroundColor(Color.rgb(28, 28, 28))
-            gravity = Gravity.TOP or Gravity.RIGHT
+            setBackgroundColor(Color.rgb(24, 24, 24))
+            setPadding(
+                dp(12),
+                dp(10),
+                dp(12),
+                dp(10)
+            )
             minLines = lines
-            maxLines = maxOf(lines, 6)
-            setPadding(dp(12), dp(8), dp(12), dp(8))
+            maxLines = lines
+            gravity = Gravity.TOP or Gravity.RIGHT
         }
 
     private fun fullParams(): LinearLayout.LayoutParams =
@@ -390,10 +578,35 @@ class MainActivity : Activity() {
             setMargins(0, dp(4), 0, dp(4))
         }
 
+    private fun weightParams(
+        weight: Float
+    ): LinearLayout.LayoutParams =
+        LinearLayout.LayoutParams(
+            0,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            weight
+        ).apply {
+            setMargins(
+                dp(2),
+                0,
+                dp(2),
+                0
+            )
+        }
+
     private fun dp(value: Int): Int =
         (value * resources.displayMetrics.density).toInt()
 
+    private fun toast(message: String) {
+        Toast.makeText(
+            this,
+            message,
+            Toast.LENGTH_SHORT
+        ).show()
+    }
+
     override fun onDestroy() {
+        generation.incrementAndGet()
         executor.shutdownNow()
         super.onDestroy()
     }
