@@ -5,94 +5,146 @@ import org.json.JSONObject
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
+import java.nio.charset.StandardCharsets
 
-data class TypeSafeRequest(
-    val endpoint: String,
-    val state: String,
-    val question: String,
-    val type: String,
-    val levels: List<String>
+data class ChatMessage(
+    val role: String,
+    val content: String
+)
+
+data class ChatAttachment(
+    val name: String,
+    val mimeType: String,
+    val sizeBytes: Long = 0L,
+    val textContent: String? = null,
+    val imageDataUrl: String? = null
 )
 
 class TypeSafeApi {
-    fun health(endpoint: String): Result<String> = runCatching {
-        val url = URL(endpoint.removeSuffix("/") + "/api/health")
-        val connection = (url.openConnection() as HttpURLConnection).apply {
-            requestMethod = "GET"
-            connectTimeout = 15_000
-            readTimeout = 15_000
-            setRequestProperty("Accept", "application/json")
-        }
 
-        try {
-            val code = connection.responseCode
-            val text = readResponse(connection, code)
-            if (code !in 200..299) {
-                throw IOException("HTTP " + code + ": " + text)
-            }
-            text
-        } finally {
-            connection.disconnect()
-        }
-    }
-
-    fun ask(request: TypeSafeRequest): Result<String> = runCatching {
-        val url = URL(request.endpoint.removeSuffix("/") + "/api/ask")
+    fun chat(
+        endpoint: String,
+        openRouterApiKey: String,
+        messages: List<ChatMessage>,
+        attachments: List<ChatAttachment>,
+        model: String = "auto"
+    ): Result<String> = runCatching {
         val body = JSONObject()
-            .put("state", request.state)
-            .put(
-                "questions",
-                JSONObject().put(
-                    "q1",
-                    JSONObject()
-                        .put("type", request.type)
-                        .put("instructions", request.question)
-                        .also { item ->
-                            when (request.type) {
-                                "score" -> {
-                                    val levels = JSONArray()
-                                    request.levels
-                                        .filter { it.isNotBlank() }
-                                        .forEach(levels::put)
-                                    item.put("levels", levels)
-                                }
-                                "choice" -> item.put("criteria", JSONObject())
-                            }
+            .put("model", model)
+            .put("messages", JSONArray().apply {
+                messages.forEach {
+                    put(
+                        JSONObject()
+                            .put("role", it.role)
+                            .put("content", it.content)
+                    )
+                }
+            })
+            .put("attachments", JSONArray().apply {
+                attachments.forEach {
+                    put(JSONObject().apply {
+                        put("name", it.name)
+                        put("mimeType", it.mimeType)
+                        put("sizeBytes", it.sizeBytes)
+                        it.textContent?.let { value ->
+                            put("textContent", value)
                         }
-                )
-            )
+                        it.imageDataUrl?.let { value ->
+                            put("imageDataUrl", value)
+                        }
+                    })
+                }
+            })
 
+        request(
+            url = URL(endpoint.trimEnd('/') + "/api/chat"),
+            method = "POST",
+            body = body.toString(),
+            openRouterApiKey = openRouterApiKey
+        )
+    }
+
+    fun health(endpoint: String): Result<String> = runCatching {
+        request(
+            url = URL(endpoint.trimEnd('/') + "/api/health"),
+            method = "GET",
+            body = null,
+            openRouterApiKey = null
+        )
+    }
+
+    private fun request(
+        url: URL,
+        method: String,
+        body: String?,
+        openRouterApiKey: String?
+    ): String {
         val connection = (url.openConnection() as HttpURLConnection).apply {
-            requestMethod = "POST"
-            doOutput = true
+            requestMethod = method
             connectTimeout = 15_000
-            readTimeout = 45_000
-            setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            readTimeout = 60_000
+            useCaches = false
             setRequestProperty("Accept", "application/json")
+
+            if (body != null) {
+                doOutput = true
+                setRequestProperty(
+                    "Content-Type",
+                    "application/json; charset=utf-8"
+                )
+            }
+
+            if (!openRouterApiKey.isNullOrBlank()) {
+                setRequestProperty(
+                    "X-OpenRouter-API-Key",
+                    openRouterApiKey.trim()
+                )
+            }
         }
 
         try {
-            connection.outputStream.use { output ->
-                output.write(body.toString().toByteArray(Charsets.UTF_8))
+            if (body != null) {
+                connection.outputStream.use { output ->
+                    output.write(body.toByteArray(StandardCharsets.UTF_8))
+                }
             }
 
             val code = connection.responseCode
-            val text = readResponse(connection, code)
-            if (code !in 200..299) {
-                throw IOException("HTTP " + code + ": " + text)
+
+            val stream = if (code in 200..299) {
+                connection.inputStream
+            } else {
+                connection.errorStream ?: connection.inputStream
             }
-            text
+
+            val text =
+                stream.bufferedReader(StandardCharsets.UTF_8).use {
+                    it.readText()
+                }
+
+            if (code !in 200..299) {
+                throw IOException(
+                    "HTTP $code: $text"
+                )
+            }
+
+            val json = JSONObject(text)
+
+            json.optString("answer")
+                .trim()
+                .takeIf { it.isNotEmpty() }
+                ?: json
+                    .optJSONArray("choices")
+                    ?.optJSONObject(0)
+                    ?.optJSONObject("message")
+                    ?.optString("content")
+                    ?.trim()
+                    ?.takeIf { it.isNotEmpty() }
+                ?: throw IOException(
+                    "The server returned no assistant text."
+                )
         } finally {
             connection.disconnect()
         }
-    }
-
-    private fun readResponse(connection: HttpURLConnection, code: Int): String {
-        val stream = if (code in 200..299) {
-            connection.inputStream
-        } else {
-            connection.errorStream ?: connection.inputStream
-        }
-        return stream.bufferedReader(Charsets.UTF_8).use { it.readText() }
     }
 }
