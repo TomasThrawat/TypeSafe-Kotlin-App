@@ -24,13 +24,15 @@ class TypeSafeApi {
             setRequestProperty("Accept", "application/json")
         }
 
-        connection.use {
-            val code = it.responseCode
-            val text = readResponse(it, code)
+        try {
+            val code = connection.responseCode
+            val text = readResponse(connection, code)
             if (code !in 200..299) {
                 throw IOException("HTTP " + code + ": " + text)
             }
             text
+        } finally {
+            connection.disconnect()
         }
     }
 
@@ -69,17 +71,19 @@ class TypeSafeApi {
             setRequestProperty("Accept", "application/json")
         }
 
-        connection.use {
-            it.outputStream.use { output ->
+        try {
+            connection.outputStream.use { output ->
                 output.write(body.toString().toByteArray(Charsets.UTF_8))
             }
 
-            val code = it.responseCode
-            val text = readResponse(it, code)
+            val code = connection.responseCode
+            val text = readResponse(connection, code)
             if (code !in 200..299) {
                 throw IOException("HTTP " + code + ": " + text)
             }
             text
+        } finally {
+            connection.disconnect()
         }
     }
 

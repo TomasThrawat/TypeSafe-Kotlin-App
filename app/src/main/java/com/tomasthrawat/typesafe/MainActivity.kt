@@ -39,7 +39,6 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.json.JSONObject
 
 private const val DEFAULT_ENDPOINT = "https://typesafe-mcp-key.vercel.app"
 
@@ -75,7 +74,7 @@ private fun TypeSafeApp() {
             connectionStatus = "جاري الاتصال..."
             connectionStatus = withContext(Dispatchers.IO) {
                 api.health(endpoint).fold(
-                    onSuccess = { "متصل بـ TypeSafe MCP" },
+                    onSuccess = { "تم الاتصال بالخادم" },
                     onFailure = { "فشل الاتصال: " + it.message }
                 )
             }
@@ -125,7 +124,7 @@ private fun TypeSafeApp() {
                                     connectionStatus = "جاري الاختبار..."
                                     connectionStatus = withContext(Dispatchers.IO) {
                                         api.health(endpoint).fold(
-                                            onSuccess = { "متصل بـ TypeSafe MCP" },
+                                            onSuccess = { "تم الاتصال بالخادم" },
                                             onFailure = { "فشل الاتصال: " + it.message }
                                         )
                                     }
@@ -257,8 +256,7 @@ private fun TypeSafeApp() {
     }
 }
 
-private fun prettyJson(raw: String): String {
-    return runCatching {
-        JSONObject(raw).toString(2)
+private fun prettyJson(raw: String): String =
+    runCatching {
+        org.json.JSONObject(raw).toString(2)
     }.getOrElse { raw }
-}
